@@ -1,0 +1,59 @@
+# Local stack: the API, PostgreSQL and Grafana's all-in-one OpenTelemetry
+# backend (OTel Collector + Tempo for traces + Prometheus for metrics +
+# Grafana UI).
+#
+#   docker compose up --build
+#
+#   API:     http://localhost:8080
+#   Grafana: http://localhost:3000  (Explore -> Tempo to see traces)
+#   If port 3000 is taken on your machine: GRAFANA_PORT=3001 make up
+name: medication-api
+
+services:
+  api:
+    build:
+      context: .
+      args:
+        VERSION: compose
+    ports:
+      - "8080:8080"
+    environment:
+      APP_ENV: local
+      DATABASE_URL: postgres://medication:medication@postgres:5432/medication?sslmode=disable
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
+      OTEL_METRIC_EXPORT_INTERVAL: "10000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      otel-lgtm:
+        condition: service_started
+    restart: unless-stopped
+    # Longer than SHUTDOWN_TIMEOUT (20s) so Docker does not SIGKILL the
+    # API in the middle of its graceful shutdown (the default is 10s).
+    stop_grace_period: 30s
+
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: medication
+      POSTGRES_PASSWORD: medication
+      POSTGRES_DB: medication
+    ports:
+      - "5432:5432"
+    volumes:
+      # PostgreSQL 18+ images keep their data under /var/lib/postgresql.
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medication -d medication"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  otel-lgtm:
+    image: grafana/otel-lgtm:0.36.0
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000" # Grafana (host port overridable)
+      - "4318:4318" # OTLP over HTTP
+
+volumes:
+  postgres-data:

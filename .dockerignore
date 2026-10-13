@@ -1,0 +1,11 @@
+# Keep the build context small and free of secrets.
+.git
+.github
+bin
+coverage.out
+*.test
+.env
+.idea
+.vscode
+.DS_Store
+*.pdf
