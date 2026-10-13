@@ -1,0 +1,13 @@
+# Binaries and artifacts
+/bin/
+*.test
+coverage.out
+
+# Local environment
+.env
+.DS_Store
+.idea/
+.vscode/
+
+# Take-home assignment (do not publish)
+integrations-team-home-project.pdf

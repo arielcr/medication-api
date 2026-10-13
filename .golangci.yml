@@ -1,0 +1,20 @@
+version: "2"
+
+linters:
+  default: standard   # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - bodyclose       # HTTP responses with an unclosed body
+    - errname         # sentinel errors prefixed with Err, error types suffixed with Error
+    - errorlint       # enforces errors.Is/As instead of ==
+    - gocritic        # subtle bugs (e.g. os.Exit after a defer)
+    - gosec           # security (e.g. HTTP servers without timeouts)
+    - misspell        # misspelled words in comments
+    - noctx           # HTTP requests or SQL queries without a context
+    - revive          # idiomatic Go style
+    - sqlclosecheck   # unclosed SQL rows/statements
+    - unconvert       # unnecessary type conversions
+
+formatters:
+  enable:
+    - gofumpt         # stricter gofmt
+    - goimports       # sorts and groups imports
