@@ -1,0 +1,75 @@
+# Example requests for the VS Code "REST Client" extension (or JetBrains HTTP Client).
+# Start the API first: `make run` (in-memory) or `make up` (Docker, with PostgreSQL).
+
+@baseUrl = http://localhost:8080
+
+### Create a medication
+# @name create
+POST {{baseUrl}}/v1/medications
+Content-Type: application/json
+
+{
+  "name": "Paracetamol",
+  "dosage": "500 mg",
+  "form": "Tablet"
+}
+
+### Get it back (uses the id from the previous response)
+GET {{baseUrl}}/v1/medications/{{create.response.body.id}}
+
+### List medications (first page of 2)
+GET {{baseUrl}}/v1/medications?limit=2
+
+### Filter by form and name
+GET {{baseUrl}}/v1/medications?form=tablet&name=para
+
+### Update it, only if nobody changed it since we read version 1
+PUT {{baseUrl}}/v1/medications/{{create.response.body.id}}
+Content-Type: application/json
+If-Match: "1"
+
+{
+  "name": "Paracetamol",
+  "dosage": "1 g",
+  "form": "tablet"
+}
+
+### Same request again: now the version is 2, so this fails with 412
+PUT {{baseUrl}}/v1/medications/{{create.response.body.id}}
+Content-Type: application/json
+If-Match: "1"
+
+{
+  "name": "Paracetamol",
+  "dosage": "750 mg",
+  "form": "tablet"
+}
+
+### Validation error: 422 with every invalid field
+POST {{baseUrl}}/v1/medications
+Content-Type: application/json
+
+{
+  "name": "",
+  "dosage": "",
+  "form": "gummy"
+}
+
+### Duplicate: 409
+POST {{baseUrl}}/v1/medications
+Content-Type: application/json
+
+{
+  "name": "PARACETAMOL",
+  "dosage": "1 G",
+  "form": "tablet"
+}
+
+### Delete it
+DELETE {{baseUrl}}/v1/medications/{{create.response.body.id}}
+
+### Probes
+GET {{baseUrl}}/healthz
+
+###
+GET {{baseUrl}}/readyz

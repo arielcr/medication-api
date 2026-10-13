@@ -1,0 +1,293 @@
+openapi: 3.1.0
+info:
+  title: Medication API
+  version: 1.0.0
+  description: |
+    CRUD API for medication records.
+
+    - Errors use RFC 9457 Problem Details (`application/problem+json`).
+    - Every response carries an `X-Request-ID` header (sent by the client or generated).
+    - Single-medication responses carry an `ETag` with the record version. Send it back in
+      `If-Match` on `PUT` to avoid overwriting someone else's change (optimistic concurrency).
+    - Lists use cursor (keyset) pagination: pass `next_cursor` as `cursor` to get the next page.
+servers:
+  - url: http://localhost:8080
+
+tags:
+  - name: medications
+  - name: health
+
+paths:
+  /v1/medications:
+    post:
+      tags: [medications]
+      summary: Create a medication
+      operationId: createMedication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MedicationInput" }
+            example: { name: Paracetamol, dosage: 500 mg, form: tablet }
+      responses:
+        "201":
+          description: Created
+          headers:
+            Location: { $ref: "#/components/headers/Location" }
+            ETag: { $ref: "#/components/headers/ETag" }
+            X-Request-ID: { $ref: "#/components/headers/RequestID" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Medication" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/Timeout" }
+    get:
+      tags: [medications]
+      summary: List medications
+      operationId: listMedications
+      parameters:
+        - name: limit
+          in: query
+          description: Page size.
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: cursor
+          in: query
+          description: Opaque cursor returned as `next_cursor` by the previous page.
+          schema: { type: string }
+        - name: form
+          in: query
+          description: Only medications of this form (case-insensitive).
+          schema: { $ref: "#/components/schemas/Form" }
+        - name: name
+          in: query
+          description: Only medications whose name contains this text (case-insensitive).
+          schema: { type: string, maxLength: 200 }
+      responses:
+        "200":
+          description: One page of medications, ordered by ID (UUIDv7, i.e. approximately creation order).
+          headers:
+            X-Request-ID: { $ref: "#/components/headers/RequestID" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MedicationList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/Timeout" }
+
+  /v1/medications/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [medications]
+      summary: Get a medication
+      operationId: getMedication
+      responses:
+        "200":
+          description: The medication
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+            X-Request-ID: { $ref: "#/components/headers/RequestID" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Medication" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/Timeout" }
+    patch:
+      tags: [medications]
+      summary: Not supported (TODO)
+      operationId: patchMedication
+      description: Partial updates are not implemented yet; use PUT. Any unsupported method on an existing path returns 405 with an Allow header.
+      responses:
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
+    put:
+      tags: [medications]
+      summary: Replace a medication
+      description: |
+        Replaces all editable fields. Send `If-Match` with the ETag you last received to make
+        the update conditional; if the medication changed in the meantime you get `412`.
+        Without `If-Match`, a concurrent modification still fails with `409` instead of
+        silently overwriting the other change.
+      operationId: updateMedication
+      parameters:
+        - name: If-Match
+          in: header
+          required: false
+          description: 'Strong ETag of the version being replaced, e.g. "3", or * for any version.'
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MedicationInput" }
+      responses:
+        "200":
+          description: The updated medication
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+            X-Request-ID: { $ref: "#/components/headers/RequestID" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Medication" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "412": { $ref: "#/components/responses/PreconditionFailed" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/Timeout" }
+    delete:
+      tags: [medications]
+      summary: Delete a medication
+      operationId: deleteMedication
+      responses:
+        "204": { description: Deleted }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/Timeout" }
+
+  /healthz:
+    get:
+      tags: [health]
+      summary: Liveness probe
+      description: 200 while the process is running. Does not check dependencies.
+      responses:
+        "200":
+          description: Alive
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+  /readyz:
+    get:
+      tags: [health]
+      summary: Readiness probe
+      description: 200 when the service can take traffic; 503 if the database is unreachable or the server is shutting down.
+      responses:
+        "200":
+          description: Ready
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "503":
+          description: Not ready
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+
+components:
+  headers:
+    Location:
+      description: URL of the created medication.
+      schema: { type: string }
+    ETag:
+      description: 'Strong ETag holding the medication version, e.g. "1".'
+      schema: { type: string }
+    RequestID:
+      description: Request identifier, also included in logs and error bodies.
+      schema: { type: string }
+
+  schemas:
+    Form:
+      type: string
+      enum: [tablet, capsule, liquid, injection, cream, inhaler]
+      description: Input is case-insensitive; responses are always lowercase.
+    MedicationInput:
+      type: object
+      additionalProperties: false
+      required: [name, dosage, form]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200, example: Paracetamol, description: No control characters. }
+        dosage: { type: string, minLength: 1, maxLength: 100, example: 500 mg, description: No control characters. }
+        form: { $ref: "#/components/schemas/Form" }
+    Medication:
+      type: object
+      required: [id, name, dosage, form, version, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid, description: UUIDv7 (time-ordered). }
+        name: { type: string }
+        dosage: { type: string }
+        form: { $ref: "#/components/schemas/Form" }
+        version: { type: integer, format: int64, minimum: 1 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    MedicationList:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Medication" }
+        next_cursor:
+          type: string
+          description: Present only when another page exists.
+    Problem:
+      type: object
+      description: RFC 9457 Problem Details.
+      required: [type, title, status]
+      properties:
+        type: { type: string, example: about:blank }
+        title: { type: string, example: Unprocessable Entity }
+        status: { type: integer, example: 422 }
+        detail: { type: string, example: the medication is not valid }
+        instance: { type: string, example: /v1/medications }
+        request_id: { type: string }
+        errors:
+          type: array
+          items:
+            type: object
+            required: [field, message]
+            properties:
+              field: { type: string, example: form }
+              message: { type: string, example: "must be one of: tablet, capsule, liquid, injection, cream, inhaler" }
+    Health:
+      type: object
+      properties:
+        status: { type: string, enum: [ok, unavailable] }
+
+  responses:
+    BadRequest:
+      description: Malformed request (invalid JSON, unknown field, invalid id, query parameter or header).
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    NotFound:
+      description: Medication not found.
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    Conflict:
+      description: A medication with the same name, dosage and form exists, or a concurrent update happened.
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    PreconditionFailed:
+      description: The If-Match ETag does not match the current version.
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    PayloadTooLarge:
+      description: The request body exceeds 1 MiB.
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    UnsupportedMediaType:
+      description: Content-Type is not application/json.
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    ValidationFailed:
+      description: The body is well-formed but breaks validation rules; `errors` lists every invalid field.
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    InternalError:
+      description: Unexpected error. Details are logged, never returned.
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    Timeout:
+      description: The request exceeded the server's request timeout.
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    MethodNotAllowed:
+      description: The path exists but does not support this method.
+      headers:
+        Allow:
+          description: Methods supported by this path.
+          schema: { type: string }
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
